@@ -23,7 +23,7 @@ def _make_detr(backbone_name: str, dilation=False, num_classes=91, mask=False):
     return detr
 
 
-def detr_resnet50(pretrained=False, num_classes=91, return_postprocessor=False):
+def detr_resnet50(pretrained=False, num_classes=10, return_postprocessor=False):
     """
     DETR R50 with 6 encoder and 6 decoder layers.
 

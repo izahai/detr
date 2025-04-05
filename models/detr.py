@@ -2,6 +2,8 @@
 """
 DETR model and criterion classes.
 """
+import pdb
+import traceback
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -118,6 +120,8 @@ class SetCriterion(nn.Module):
                                     dtype=torch.int64, device=src_logits.device)
         target_classes[idx] = target_classes_o
 
+        #print(f"target_classes: {target_classes.shape}")
+        #print(f"empty_weight: {self.empty_weight.shape}")
         loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
         losses = {'loss_ce': loss_ce}
 
@@ -310,7 +314,9 @@ def build(args):
     # you should pass `num_classes` to be 2 (max_obj_id + 1).
     # For more details on this, check the following discussion
     # https://github.com/facebookresearch/detr/issues/108#issuecomment-650269223
-    num_classes = 20 if args.dataset_file != 'coco' else 91
+    
+    #num_classes = 10 if args.dataset_file != 'coco' else 91
+    num_classes = 10
     if args.dataset_file == "coco_panoptic":
         # for panoptic, we just add a num_classes that is large enough to hold
         # max_obj_id + 1, but the exact value doesn't really matter

@@ -15,3 +15,10 @@ experiment-*
 .mypy_cache/*
 not_tracked_dir/
 .vscode
+data/aicity2024_track5_train/*
+checkpoints/*
+.venv
+bb_txt/*
+detr_checkpoint/*
+results/*
+UIT_res

@@ -1,0 +1,61 @@
+# Inference
+python main.py --device mps \
+    --batch_size 2 \
+    --no_aux_loss --eval \
+    --resume checkpoints/checkpoint013.pth \
+    --coco_path data/aicity2024_track5_train \
+    --dataset_file custom \
+    --output_dir results 
+
+python inference.py --device mps \
+    --batch_size 2 \
+    --no_aux_loss \
+    --resume checkpoints/checkpoint012.pth \
+    --coco_path data/aicity2024_track5_train \
+    --dataset_file custom \
+    --output_dir results 
+
+python main.py --device mps --no_aux_loss --resume checkpoints/checkpoint000.pth --inference_a_video data/aicity2024_track5_train/images/1.mp4_158.jpg --output_dir results/
+python main.py --device mps \
+  --no_aux_loss --resume checkpoints/checkpoint022.pth \
+  --inference_a_video data/aicity2024_track5_train/val_img/002_34.jpg \
+  --output_dir results \
+  --coco_path data/aicity2024_track5_train
+
+
+# Train
+python main.py --resume detr_checkpoint/detr-r50-e632da11.pth --dataset_file custom --coco_path path/to/custom/dataset
+python main.py --device mps --build_train True --resume detr_checkpoint/detr-r50-e632da11.pth --dataset_file custom --coco_path data/aicity2024_track5_train --output_dir checkpoints/ --change_csf_head True
+python main.py --build_train True --resume detr_checkpoint/detr-r50-e632da11.pth --dataset_file custom --coco_path data/aicity2024_track5_train --output_dir checkpoints/ --change_csf_head True
+python main.py --device mps --build_train True --resume checkpoints/checkpoint002.pth --dataset_file custom --coco_path data/aicity2024_track5_train --output_dir checkpoints/
+
+python main.py --batch_size 4 --device mps \
+ --build_train True --resume checkpoints/checkpoint022.pth \
+ --dataset_file custom --coco_path data/aicity2024_track5_train \
+ --output_dir checkpoints/ \
+ --train_val True
+
+
+# Convert data
+python util/converter.py --basepath data/aicity2024_track5_train/ --gtpath gt.txt --outpath simpjson
+python util/extracter.py --basepath data/aicity2024_track5_train/ 
+python util/spliter.py --basepath data/aicity2024_track5_train/ --train_percent 100 --val_percent 0
+python util/simpjson2coco.py --basepath data/aicity2024_track5_train/ 
+# Convert testset
+python util/tester.py --basepath data/aicity2024_track5_train/ --outpath val.json
+# Visulize
+python util/visualize.py \
+  --json_path data/aicity2024_track5_train/val.json \
+  --image_dir data/aicity2024_track5_train/val_img \
+  --image_name 100_42.jpg 
+
+
+# concat txt
+python util/concat_txt.py --input_folder UIT_res --output_file all_1_100.txt
+python util/uit_txt_to_json.py --input_file all_1_100.txt --output_file uit.json
+
+python uit_eval.py --coco_path data/aicity2024_track5_train --dataset_file custom
+
+python print_eval.py --eval_file results/eval.pth
+
+python mAP_txt.py --coco_path data/aicity2024_track5_train --dataset_file custom
