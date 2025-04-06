@@ -313,8 +313,9 @@ def evaluate_txt(model, criterion, postprocessors, data_loader, base_ds, device,
                 bbox_height = bbox_bottom - bbox_top
 
                 # Format the string
-                formatted_string = f"{video_id},{frame_id},{bbox_left:.17f},{bbox_top:.17f},{bbox_width:.17f},{bbox_height:.17f},{label},{score:.17f}\n"
-                uit_txt_format.append(formatted_string)
+                #formatted_string = f"{video_id},{frame_id},{bbox_left:.17f},{bbox_top:.17f},{bbox_width:.17f},{bbox_height:.17f},{label},{score:.17f}\n"
+                bb_ins = [int(video_id), int(frame_id), bbox_left, bbox_top, bbox_width, bbox_height, int(label), score]
+                uit_txt_format.append(bb_ins)
 
         res = {target['image_id'].item(): output for target, output in zip(targets, results)}
         if coco_evaluator is not None:
@@ -342,3 +343,5 @@ def evaluate_txt(model, criterion, postprocessors, data_loader, base_ds, device,
     print(f"Total number of predicted bounding boxes: {total_predicted_boxes}")
     
     return uit_txt_format, coco_evaluator
+
+

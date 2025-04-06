@@ -17,6 +17,7 @@ from datasets import build_dataset, get_coco_api_from_dataset
 from engine import evaluate, evaluate_txt
 from models import build_model
 from mAP_txt import evaluate_txt_json, popo
+from ensemble_boxes import *
 
 import shutil
 
@@ -113,9 +114,19 @@ def get_args_parser():
 
     return parser
 
-def save_bb_txt(uit_txt_format, eval_epoch, postprc="none"):
-    with open(f"results/bb_{eval_epoch:03}_{postprc}.txt", "w") as f:
-        f.writelines(uit_txt_format)
+def save_bb_txt(bb_res, eval_epoch, postprc="none"):
+    file_path = f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt"
+    try:
+        with open(file_path, "w") as f:
+            for entry in bb_res:
+                # Unpack the entry into individual variables
+                video_id, frame_id, bbox_left, bbox_top, bbox_width, bbox_height, label, score = entry
+                # Format the string as specified
+                formatted_string = f"{video_id},{frame_id},{bbox_left:.17f},{bbox_top:.17f},{bbox_width:.17f},{bbox_height:.17f},{label},{score:.17f}\n"
+                f.write(formatted_string)
+        print(f"Saved bounding box data to {file_path}")
+    except Exception as e:
+        print(f"An error occurred while saving the file: {e}")
 
 # UIT minority post-process
 def count_samples_per_class(data):
@@ -129,6 +140,15 @@ def find_max(classes):
     classes_count = count_samples_per_class(classes)
     max_class = max(classes_count)
     return max_class, classes_count
+
+def rm_bb_minoirty_in_a_video(res, minority_score):
+    new_res = []
+    for result in res:
+        if result[-1] >= minority_score:
+            new_res.append(result)
+        #else:
+         #   print(f"Remove {result[0]} {result[1]}")
+    return new_res
 
 def minority(classes, p=0.0001):
     n_maxclass, classes_count = find_max(classes)
@@ -148,14 +168,179 @@ def minority(classes, p=0.0001):
                 min_thresh = each_sample[-1]
     return max(min_thresh, p)
 
+def multi_minority(bb_res):
+    cur_video_id = 1
+    bb_a_video = []
+    new_results = []
+    for instance_bb in bb_res:
+        if instance_bb[0] == cur_video_id:
+            bb_a_video.append(instance_bb)
+        else:
+            minority_score = minority(bb_a_video)
+            #print(f"Minority score for video {cur_video_id}: {minority_score}")
+            bb_a_video = rm_bb_minoirty_in_a_video(bb_a_video, minority_score)
+            new_results.extend(bb_a_video)
+            bb_a_video.clear()
+
+            cur_video_id = instance_bb[0]
+            bb_a_video.append(instance_bb)
+    
+    # Process the last video
+    if bb_a_video:
+        minority_score = minority(bb_a_video)
+        #print(f"Minority score for video {cur_video_id}: {minority_score}")
+        bb_a_video = rm_bb_minoirty_in_a_video(bb_a_video, minority_score)
+        new_results.extend(bb_a_video)
+
+    return new_results
+
+def fuse(  # NOTE: fuse a single video!
+    process_video_results: list,
+    video_path: str='',
+    iou_thr: float = 0.7, # default values of repo
+    skip_box_thr: float = 0.0001, # default values of repo
+) -> list:
+    datas = process_video_results # list of [int(video_id), int(frame_id), bbox_left, bbox_top, bbox_width, bbox_height, float(label), score]
+    results = []
+    w, h = 1280, 720
+
+    video_id = datas[0][0]
+    cur_frame_id = datas[0][1]
+    frame_bb = []
+
+    for bb_ins in datas:
+        frame_id = bb_ins[1]
+
+        if frame_id != cur_frame_id:
+            if frame_bb:
+                boxes_list = []
+                scores_list = []
+                labels_list = []
+                weights = [1] * len(frame_bb)
+
+                for box in frame_bb:
+                    x_min = box[2] / w
+                    y_min = box[3] / h
+                    x_max = (box[2] + box[4]) / w
+                    y_max = (box[3] + box[5]) / h
+                    boxes_list.append([x_min, y_min, x_max, y_max])
+                    scores_list.append(box[7])
+                    labels_list.append(box[6])
+
+                fused_boxes, fused_scores, fused_labels = weighted_boxes_fusion(
+                    boxes_list, scores_list, labels_list, weights=weights,
+                    iou_thr=iou_thr, skip_box_thr=skip_box_thr
+                )
+
+                for i in range(len(fused_boxes)):
+                    x_min = fused_boxes[i][0] * w
+                    y_min = fused_boxes[i][1] * h
+                    width = (fused_boxes[i][2] - fused_boxes[i][0]) * w
+                    height = (fused_boxes[i][3] - fused_boxes[i][1]) * h
+                    results.append([video_id, cur_frame_id, x_min, y_min, width, height, fused_labels[i], fused_scores[i]])
+
+            cur_frame_id = frame_id
+            frame_bb = []
+
+        frame_bb.append(bb_ins)
+
+    if frame_bb:
+        boxes_list = []
+        scores_list = []
+        labels_list = []
+        weights = [1] * len(frame_bb)
+
+        for box in frame_bb:
+            x_min = box[2] / w
+            y_min = box[3] / h
+            x_max = (box[2] + box[4]) / w
+            y_max = (box[3] + box[5]) / h
+            boxes_list.append([x_min, y_min, x_max, y_max])
+            scores_list.append(box[7])
+            labels_list.append(box[6])
+
+        fused_boxes, fused_scores, fused_labels = weighted_boxes_fusion(
+            boxes_list, scores_list, labels_list, weights=weights,
+            iou_thr=iou_thr, skip_box_thr=skip_box_thr
+        )
+
+        for i in range(len(fused_boxes)):
+            x_min = fused_boxes[i][0] * w
+            y_min = fused_boxes[i][1] * h
+            width = (fused_boxes[i][2] - fused_boxes[i][0]) * w
+            height = (fused_boxes[i][3] - fused_boxes[i][1]) * h
+            results.append([video_id, cur_frame_id, x_min, y_min, width, height, fused_labels[i], fused_scores[i]])
+
+    return results
+
+def multi_fuse(bb_res):
+    new_res = []
+
+    return new_res         
+
 def detection_test_set(
     model, criterion, postprocessors,
     data_loader_val, base_ds, device, args
 ) -> list:
-    uit_txt_format, coco_evaluator = evaluate_txt(model, criterion, postprocessors,
-                                    data_loader_val, base_ds, device, args.output_dir)
-    return
+    
+    bb_res, coco_evaluator = evaluate_txt(model, criterion, postprocessors,
+        data_loader_val, base_ds, device, args.output_dir)
+    
+    match = re.search(r'.*checkpoint(\d+)\.pth', args.resume)
+    if match:
+        eval_epoch = int(match.group(1))
 
+    full_metrics = {}
+    for iou_type, coco_eval in coco_evaluator.coco_eval.items():
+        if hasattr(coco_eval, "stats"):
+            full_metrics[iou_type] = {
+                "AP (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[0],
+                "AP (IoU=0.50      | area=all | maxDets=100)": coco_eval.stats[1],
+                "AP (IoU=0.75      | area=all | maxDets=100)": coco_eval.stats[2],
+                "AP (IoU=0.50:0.95 | area=small | maxDets=100)": coco_eval.stats[3],
+                "AP (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[4],
+                "AP (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[5],
+                "AR (IoU=0.50:0.95 | area=all | maxDets=1)": coco_eval.stats[6],
+                "AR (IoU=0.50:0.95 | area=all | maxDets=10)": coco_eval.stats[7],
+                "AR (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[8],
+                "AR (IoU=0.50:0.95 | area=small | maxDets=100)": coco_eval.stats[9],
+                "AR (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[10],
+                "AR (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[11],
+            }
+
+    # Save full metrics to a JSON file
+    full_metrics_path = f"results/full_metrics_epoch{eval_epoch:03}.json"
+    with open(full_metrics_path, "w") as f:
+        json.dump(full_metrics, f, indent=2)
+    print(f"Full evaluation metrics saved to {full_metrics_path}")
+    
+    return bb_res
+
+def load_bb_txt(file_path):
+    bb_res = []
+    try:
+        with open(file_path, "r") as f:
+            for line in f:
+                # Parse the line into components
+                values = line.strip().split(",")
+                # Convert numeric values to appropriate types
+                parsed_line = [
+                    int(values[0]),  # video_id
+                    int(values[1]),  # frame_id
+                    float(values[2]),  # bbox_left
+                    float(values[3]),  # bbox_top
+                    float(values[4]),  # bbox_width
+                    float(values[5]),  # bbox_height
+                    int(float(values[6])),  # class_id
+                    float(values[7])  # score
+                ]
+                bb_res.append(parsed_line)
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+    except Exception as e:
+        print(f"An error occurred while loading the file: {e}")
+    
+    return bb_res
 
 def main(args):
     utils.init_distributed_mode(args)
@@ -211,9 +396,8 @@ def main(args):
     # load checkpoint
     checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
     model_without_ddp.load_state_dict(checkpoint['model'])
-
-
-    
+    gt_file = 'data/aicity2024_track5_train/val.json'
+ 
     total_boxes = 0
     eval_epoch = 0
     for img_id in base_ds.imgs.keys():
@@ -222,47 +406,26 @@ def main(args):
         total_boxes += len(anns)
     print(f"Total number of bounding boxes in the validation set: {total_boxes}")
     
-    uit_txt_format, coco_evaluator = evaluate_txt(model, criterion, postprocessors,
-                                        data_loader_val, base_ds, device, args.output_dir)
-
-    if args.output_dir:
-        # Try to extract epoch number from checkpoint filename
-        match = re.search(r'.*checkpoint(\d+)\.pth', args.resume)
-        if match:
-            eval_epoch = int(match.group(1))
-
-        full_metrics = {}
-        for iou_type, coco_eval in coco_evaluator.coco_eval.items():
-            if hasattr(coco_eval, "stats"):
-                full_metrics[iou_type] = {
-                    "AP (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[0],
-                    "AP (IoU=0.50      | area=all | maxDets=100)": coco_eval.stats[1],
-                    "AP (IoU=0.75      | area=all | maxDets=100)": coco_eval.stats[2],
-                    "AP (IoU=0.50:0.95 | area=small | maxDets=100)": coco_eval.stats[3],
-                    "AP (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[4],
-                    "AP (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[5],
-                    "AR (IoU=0.50:0.95 | area=all | maxDets=1)": coco_eval.stats[6],
-                    "AR (IoU=0.50:0.95 | area=all | maxDets=10)": coco_eval.stats[7],
-                    "AR (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[8],
-                    "AR (IoU=0.50:0.95 | area=small | maxDets=100)": coco_eval.stats[9],
-                    "AR (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[10],
-                    "AR (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[11],
-                }
-
-        # Save full metrics to a JSON file
-        full_metrics_path = output_dir / f"full_metrics_epoch{eval_epoch:03}.json"
-        with open(full_metrics_path, "w") as f:
-            json.dump(full_metrics, f, indent=2)
-        print(f"Full evaluation metrics saved to {full_metrics_path}")
-
-    gt_file = 'data/aicity2024_track5_train/val.json'
-
-    save_bb_txt(uit_txt_format, eval_epoch) # Save none postprocess bb   
+    match = re.search(r'.*checkpoint(\d+)\.pth', args.resume)
+    if match:
+        eval_epoch = int(match.group(1))
     
-    uit_txt_format = minority(uit_txt_format)
-    postprc = 'minority'
-    save_bb_txt(uit_txt_format, eval_epoch, postprc)
-    evaluate_txt_json(base_ds, ['bbox'], popo(gt_file, f"results/bb_{eval_epoch:03}_{postprc}.txt"))
+    postprc='none'
+    #ori_res = detection_test_set(model, criterion, postprocessors, data_loader_val, base_ds, device, args)
+    ori_res = load_bb_txt(f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
+    save_bb_txt(ori_res, eval_epoch) # Save none postprocess bb  
+    evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
+     
+    #postprc = 'fuse'
+    #new_res = fuse(ori_res)
+    #save_bb_txt(new_res, eval_epoch, postprc)
+    #evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
+
+
+    postprc = 'minority' 
+    new_res = multi_minority(ori_res)
+    save_bb_txt(new_res, eval_epoch, postprc)
+    evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
     
     return
     

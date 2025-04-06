@@ -2,7 +2,7 @@
 python main.py --device mps \
     --batch_size 2 \
     --no_aux_loss --eval \
-    --resume checkpoints/checkpoint013.pth \
+    --resume checkpoints/checkpoint012.pth \
     --coco_path data/aicity2024_track5_train \
     --dataset_file custom \
     --output_dir results 
@@ -10,7 +10,7 @@ python main.py --device mps \
 python inference.py --device mps \
     --batch_size 2 \
     --no_aux_loss \
-    --resume checkpoints/checkpoint012.pth \
+    --resume checkpoints/checkpoint022.pth \
     --coco_path data/aicity2024_track5_train \
     --dataset_file custom \
     --output_dir results 

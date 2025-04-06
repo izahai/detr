@@ -8,6 +8,7 @@ import json
 from collections import defaultdict
 from datasets import build_dataset, get_coco_api_from_dataset
 from main import get_args_parser
+import re
 
 def popo(gt_file, txt_file):
     # Load image_id mapping from gt.json
@@ -51,7 +52,34 @@ def popo(gt_file, txt_file):
         res[image_id]["scores"] = torch.tensor(res[image_id]["scores"])
     return res
 
-def evaluate_txt_json(base_ds, iou_types, res):
+def save_eval_json(coco_evaluator, tg_file):
+    full_metrics = {}
+    for iou_type, coco_eval in coco_evaluator.coco_eval.items():
+        if hasattr(coco_eval, "stats"):
+            full_metrics[iou_type] = {
+                "AP (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[0],
+                "AP (IoU=0.50      | area=all | maxDets=100)": coco_eval.stats[1],
+                "AP (IoU=0.75      | area=all | maxDets=100)": coco_eval.stats[2],
+                "AP (IoU=0.50:0.95 | area=small | maxDets=100)": coco_eval.stats[3],
+                "AP (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[4],
+                "AP (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[5],
+                "AR (IoU=0.50:0.95 | area=all | maxDets=1)": coco_eval.stats[6],
+                "AR (IoU=0.50:0.95 | area=all | maxDets=10)": coco_eval.stats[7],
+                "AR (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[8],
+                "AR (IoU=0.50:0.95 | area=small | maxDets=100)": coco_eval.stats[9],
+                "AR (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[10],
+                "AR (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[11],
+            }
+
+    with open(tg_file, "w") as f:
+        json.dump(full_metrics, f, indent=2)
+    return
+
+def evaluate_txt_json(base_ds, iou_types, gt_file, pred_file=str):
+    res = popo(gt_file, pred_file)
+    
+    tg_file = pred_file.replace(".txt", ".json").replace("bb_txt/", "results/")
+
     coco_evaluator = CocoEvaluator(base_ds, iou_types)
 
     coco_evaluator.update(res)
@@ -64,19 +92,21 @@ def evaluate_txt_json(base_ds, iou_types, res):
         coco_evaluator.accumulate()
         coco_evaluator.summarize()
     
+    save_eval_json(coco_evaluator, tg_file)
     return res
 
-# Usage Example:
-# Path to your ground truth and prediction .txt files
-gt_file = 'data/aicity2024_track5_train/val.json'
-#pred_file = 'all_1_100.txt'
-pred_file = 'bb_txt/bb_012.txt'
-#out_file = 'results/mAP_016.json'
+if __name__ == '__main__':
+    # Usage Example:
+    # Path to your ground truth and prediction .txt files
+    gt_file = 'data/aicity2024_track5_train/val.json'
+    #pred_file = 'all_1_100.txt'
+    pred_file = 'bb_txt/bb_012.txt'
+    #out_file = 'results/mAP_016.json'
 
-parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
-args = parser.parse_args()
+    parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
+    args = parser.parse_args()
 
-dataset_val = build_dataset(image_set='val', args=args)
-base_ds = get_coco_api_from_dataset(dataset_val)
+    dataset_val = build_dataset(image_set='val', args=args)
+    base_ds = get_coco_api_from_dataset(dataset_val)
 
-evaluate_txt_json(base_ds, ['bbox'], popo(gt_file, pred_file))
+    evaluate_txt_json(base_ds, ['bbox'], gt_file, pred_file)
