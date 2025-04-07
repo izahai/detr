@@ -1,5 +1,5 @@
-from utils import overlap_ratio
-from detection_object import Head, Human, Motor
+from util.utils import overlap_ratio
+from util.detection_object import Head, Human, Motor
 class Filter:
     def __init__(self, motorlist, humanlist) -> None:
         self.motorlist = motorlist

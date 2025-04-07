@@ -99,8 +99,9 @@ if __name__ == '__main__':
     # Usage Example:
     # Path to your ground truth and prediction .txt files
     gt_file = 'data/aicity2024_track5_train/val.json'
-    #pred_file = 'all_1_100.txt'
-    pred_file = 'bb_txt/bb_012.txt'
+    #pred_file = 'bb_txt/all_1_100.txt'
+    #pred_file = 'bb_txt/bb_012.txt'
+    pred_file='final_results_conf_0.3_adaptive.txt'
     #out_file = 'results/mAP_016.json'
 
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])

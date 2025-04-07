@@ -10,7 +10,7 @@ python main.py --device mps \
 python inference.py --device mps \
     --batch_size 2 \
     --no_aux_loss \
-    --resume checkpoints/checkpoint022.pth \
+    --resume checkpoints/checkpoint999.pth \
     --coco_path data/aicity2024_track5_train \
     --dataset_file custom \
     --output_dir results 
@@ -59,3 +59,7 @@ python uit_eval.py --coco_path data/aicity2024_track5_train --dataset_file custo
 python print_eval.py --eval_file results/eval.pth
 
 python mAP_txt.py --coco_path data/aicity2024_track5_train --dataset_file custom
+
+7: 201, 212, 223, 248
+
+005

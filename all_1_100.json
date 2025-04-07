@@ -1,0 +1,16 @@
+{
+  "bbox": {
+    "AP (IoU=0.50:0.95 | area=all | maxDets=100)": 0.3839360160245447,
+    "AP (IoU=0.50      | area=all | maxDets=100)": 0.5354109224104675,
+    "AP (IoU=0.75      | area=all | maxDets=100)": 0.43987155634496516,
+    "AP (IoU=0.50:0.95 | area=small | maxDets=100)": 0.09293231654046388,
+    "AP (IoU=0.50:0.95 | area=medium | maxDets=100)": 0.4062598132157288,
+    "AP (IoU=0.50:0.95 | area=large | maxDets=100)": 0.5201044518332417,
+    "AR (IoU=0.50:0.95 | area=all | maxDets=1)": 0.2978933242430326,
+    "AR (IoU=0.50:0.95 | area=all | maxDets=10)": 0.5452266495287349,
+    "AR (IoU=0.50:0.95 | area=all | maxDets=100)": 0.5799390276733227,
+    "AR (IoU=0.50:0.95 | area=small | maxDets=100)": 0.20567442335610603,
+    "AR (IoU=0.50:0.95 | area=medium | maxDets=100)": 0.6111994472972312,
+    "AR (IoU=0.50:0.95 | area=large | maxDets=100)": 0.6784964904180376
+  }
+}

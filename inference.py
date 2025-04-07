@@ -18,8 +18,15 @@ from engine import evaluate, evaluate_txt
 from models import build_model
 from mAP_txt import evaluate_txt_json, popo
 from ensemble_boxes import *
+from util.v_expander import Human, Motor
+from util.filter2 import Filter
+from tqdm import tqdm
+import os
 
 import shutil
+
+list_P2 = []
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
@@ -128,6 +135,12 @@ def save_bb_txt(bb_res, eval_epoch, postprc="none"):
     except Exception as e:
         print(f"An error occurred while saving the file: {e}")
 
+def save_virtual_expander_txt(str_res, eval_epoch, postprc):
+    file_path = f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt"
+    with open(file_path, 'w') as f:
+        f.write(str_res)
+    return
+
 # UIT minority post-process
 def count_samples_per_class(data):
     class_counts = [0,0,0,0,0,0,0,0,0] 
@@ -194,89 +207,142 @@ def multi_minority(bb_res):
 
     return new_results
 
-def fuse(  # NOTE: fuse a single video!
+def read_detections(lines: list):
+    detections_dict = {}
+    w, h = 1280, 720 # NOTE: Change this to the actual width and height of the video
+    for line in lines:
+        video_id, frame, bb_left, bb_top, bb_width, bb_height, class_id, score = line.strip().split(',')
+        frame = int(float(frame))
+        video_id = int(video_id)
+        if video_id not in detections_dict:
+            detections_dict[video_id] = {}
+        if frame not in detections_dict[video_id]:
+            detections_dict[video_id][frame] = []
+        detections_dict[video_id][frame].append([float(bb_left) / w, float(bb_top) / h, (float(bb_width) + float(bb_left)) / w, 
+        (float(bb_height) + float(bb_top)) / h,  float(score), int(float(class_id)), ])
+    return detections_dict
+
+def convert_fuse_format(num_res: list, test_path: str):
+    cv_res = []
+    ls_bb_video = []
+    for bb_ins in num_res:
+        pass
+    return cv_res
+
+def fuse(
     process_video_results: list,
-    video_path: str='',
+    video_path: str,
     iou_thr: float = 0.7, # default values of repo
     skip_box_thr: float = 0.0001, # default values of repo
 ) -> list:
-    datas = process_video_results # list of [int(video_id), int(frame_id), bbox_left, bbox_top, bbox_width, bbox_height, float(label), score]
+    datas = [read_detections(item) for item in process_video_results]
     results = []
     w, h = 1280, 720
 
-    video_id = datas[0][0]
-    cur_frame_id = datas[0][1]
-    frame_bb = []
+    for video_name in tqdm(os.listdir(video_path)):
+        video_id = int(video_name.split(".")[0])
+        for frame_idx in range(1,201):
+            frame_idx = str(frame_idx)
+            boxes_list = []
+            scores_list = []
+            labels_list  = []
+            weights = [1] * len(datas)
+            weights[0] = 3
 
-    for bb_ins in datas:
-        frame_id = bb_ins[1]
+            for data in datas:
+                data_box = []
+                score_box = []
+                label_box = []
+                if video_id in data and int(frame_idx) in data[video_id]:
+                    for box in data[video_id][int(frame_idx)]:
+                        data_box.append(box[:4])
+                        score_box.append(box[4])
+                        label_box.append(box[5])
+                boxes_list.append(data_box)
+                scores_list.append(score_box)
+                labels_list.append(label_box)
 
-        if frame_id != cur_frame_id:
-            if frame_bb:
-                boxes_list = []
-                scores_list = []
-                labels_list = []
-                weights = [1] * len(frame_bb)
-
-                for box in frame_bb:
-                    x_min = box[2] / w
-                    y_min = box[3] / h
-                    x_max = (box[2] + box[4]) / w
-                    y_max = (box[3] + box[5]) / h
-                    boxes_list.append([x_min, y_min, x_max, y_max])
-                    scores_list.append(box[7])
-                    labels_list.append(box[6])
-
-                fused_boxes, fused_scores, fused_labels = weighted_boxes_fusion(
-                    boxes_list, scores_list, labels_list, weights=weights,
-                    iou_thr=iou_thr, skip_box_thr=skip_box_thr
-                )
-
-                for i in range(len(fused_boxes)):
-                    x_min = fused_boxes[i][0] * w
-                    y_min = fused_boxes[i][1] * h
-                    width = (fused_boxes[i][2] - fused_boxes[i][0]) * w
-                    height = (fused_boxes[i][3] - fused_boxes[i][1]) * h
-                    results.append([video_id, cur_frame_id, x_min, y_min, width, height, fused_labels[i], fused_scores[i]])
-
-            cur_frame_id = frame_id
-            frame_bb = []
-
-        frame_bb.append(bb_ins)
-
-    if frame_bb:
-        boxes_list = []
-        scores_list = []
-        labels_list = []
-        weights = [1] * len(frame_bb)
-
-        for box in frame_bb:
-            x_min = box[2] / w
-            y_min = box[3] / h
-            x_max = (box[2] + box[4]) / w
-            y_max = (box[3] + box[5]) / h
-            boxes_list.append([x_min, y_min, x_max, y_max])
-            scores_list.append(box[7])
-            labels_list.append(box[6])
-
-        fused_boxes, fused_scores, fused_labels = weighted_boxes_fusion(
-            boxes_list, scores_list, labels_list, weights=weights,
-            iou_thr=iou_thr, skip_box_thr=skip_box_thr
-        )
-
-        for i in range(len(fused_boxes)):
-            x_min = fused_boxes[i][0] * w
-            y_min = fused_boxes[i][1] * h
-            width = (fused_boxes[i][2] - fused_boxes[i][0]) * w
-            height = (fused_boxes[i][3] - fused_boxes[i][1]) * h
-            results.append([video_id, cur_frame_id, x_min, y_min, width, height, fused_labels[i], fused_scores[i]])
+            boxes, scores, labels = weighted_boxes_fusion(boxes_list, scores_list, labels_list, weights=weights, iou_thr=iou_thr, skip_box_thr=skip_box_thr)
+            for i in range(len(boxes)):
+                results.append([video_id, frame_idx, boxes[i][0] *w , boxes[i][1] * h, (boxes[i][2] - boxes[i][0]) * w
+                , (boxes[i][3] - boxes[i][1]) * h, labels[i], scores[i]])
 
     return results
 
 def multi_fuse(bb_res):
-    new_res = []
+    cur_video_id = 1
+    bb_a_video = []
+    new_results = []
+    for instance_bb in bb_res:
+        if instance_bb[0] == cur_video_id:
+            bb_a_video.append(instance_bb)
+        else:
+            bb_a_video = fuse(bb_a_video)
+            new_results.extend(bb_a_video)
+            bb_a_video.clear()
 
-    return new_res         
+            cur_video_id = instance_bb[0]
+            bb_a_video.append(instance_bb)
+    
+    # Process the last video
+    if bb_a_video:
+        bb_a_video = fuse(bb_a_video)
+        new_results.extend(bb_a_video)
+
+    return new_results       
+
+def virtual_expander(data: list):
+    dataset = {}
+    for line in data:
+        vid, fid, left, top, width, height, cls, conf = line
+        if int(float(cls)) != 1:
+            
+            if vid not in dataset.keys():
+                dataset[vid] = {}
+            if fid not in dataset[vid].keys():
+                dataset[vid][fid] = {}
+            if 'human' not in dataset[vid][fid].keys():
+                dataset[vid][fid]['human'] = []
+            dataset[vid][fid]['human'].append(Human(bbox=[float(left), float(top), float(width), float(height),float(cls), float(conf)]))
+       
+        else:
+            if vid not in dataset.keys():
+                dataset[vid] = {}
+            if fid not in dataset[vid].keys():
+                dataset[vid][fid] = {}
+            if 'motor' not in dataset[vid][fid].keys():
+                dataset[vid][fid]['motor'] = []
+            dataset[vid][fid]['motor'].append(Motor(bbox=[float(left), float(top), float(width), float(height),float(cls), float(conf)]))
+       
+            # if 'human' not in dataset[vid][fid].keys():
+            #     dataset[vid][fid]['human'] = []
+            # dataset[vid][fid]['human'].append(Human(bbox=[float(left), float(top), float(width), float(height),float(cls), float(conf)]))
+    # Create ouput
+    results = ''
+    for vid in tqdm(dataset.keys()):
+        results += process_video(dataset, vid)
+    
+    return results
+
+def process_video(dataset, vid):
+    result = ''
+    for fid in dataset[vid].keys():
+        if 'human' not in dataset[vid][fid].keys():
+            dataset[vid][fid]['human'] = []
+        if 'motor' not in dataset[vid][fid].keys():
+            dataset[vid][fid]['motor'] = []
+        result += process_objects(vid, fid, dataset[vid][fid]['human'], dataset[vid][fid]['motor'])
+    return result
+
+def process_objects(vid, fid, human_list, motor_list):
+    filter = Filter(motor_list, human_list)
+    result = ''
+    all_class = filter.create_virtual()
+    for obj in all_class:
+        left, top, right, bottom, class_id, conf, _ = obj.get_box_info()
+        result += ','.join(map(str, [vid, fid, left, top, right - left, bottom - top, class_id, conf])) + '\n'
+        #result.append([int(vid), int(fid), left, top, right - left, bottom - top, int(class_id), conf])
+    return result
 
 def detection_test_set(
     model, criterion, postprocessors,
@@ -342,6 +408,21 @@ def load_bb_txt(file_path):
     
     return bb_res
 
+def eliminate_P0_class(ori_res):
+    # Filter out bounding boxes with class labels 8 and 9
+    filtered_res = [entry for entry in ori_res if entry[6] not in [8,9]]
+    return filtered_res
+
+def score_correction_P2(ori_res):
+    filtered_res = [
+        entry for entry in ori_res
+        if not (entry[6] in [6, 7] and entry[0] != 5)  # Remove class 6 and 7 unless video_id is 5
+    ]
+    for sample in filtered_res:
+        if sample[0] == 5 and sample[6] in [6,7]:
+            sample[7] += 0.3
+    return filtered_res
+
 def main(args):
     utils.init_distributed_mode(args)
     print("git:\n  {}\n".format(utils.get_sha()))
@@ -394,9 +475,10 @@ def main(args):
     output_dir = Path(args.output_dir)
         
     # load checkpoint
-    checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
-    model_without_ddp.load_state_dict(checkpoint['model'])
+    #checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
+    #model_without_ddp.load_state_dict(checkpoint['model'])
     gt_file = 'data/aicity2024_track5_train/val.json'
+    video_test_path = "videos_2023"
  
     total_boxes = 0
     eval_epoch = 0
@@ -413,19 +495,25 @@ def main(args):
     postprc='none'
     #ori_res = detection_test_set(model, criterion, postprocessors, data_loader_val, base_ds, device, args)
     ori_res = load_bb_txt(f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
+    ori_res = eliminate_P0_class(ori_res)
+    ori_res = score_correction_P2(ori_res)
     save_bb_txt(ori_res, eval_epoch) # Save none postprocess bb  
     evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
      
-    #postprc = 'fuse'
-    #new_res = fuse(ori_res)
-    #save_bb_txt(new_res, eval_epoch, postprc)
-    #evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
+    # postprc = 'fuse'
+    # new_res = fuse(ori_res, video_test_path)
+    # save_bb_txt(new_res, eval_epoch, postprc)
+    # evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
 
+    # postprc = 'minority' 
+    # new_res = multi_minority(ori_res)
+    # save_bb_txt(new_res, eval_epoch, postprc)
+    # evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
 
-    postprc = 'minority' 
-    new_res = multi_minority(ori_res)
-    save_bb_txt(new_res, eval_epoch, postprc)
-    evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
+    # postprc = 'virtual_expander'
+    # str_res = virtual_expander(new_res)
+    # save_virtual_expander_txt(str_res, eval_epoch, postprc)
+    # evaluate_txt_json(base_ds, ['bbox'], gt_file, f"bb_txt/bb_{eval_epoch:03}_{postprc}.txt")
     
     return
     

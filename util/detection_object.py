@@ -1,5 +1,5 @@
 import uuid
-from utils import overlap_ratio
+from util.utils import overlap_ratio
 
 import numpy as np
 
