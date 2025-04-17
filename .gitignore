@@ -22,3 +22,8 @@ bb_txt/*
 detr_checkpoint/*
 results/*
 UIT_res
+31_45v/031.mp4
+*.mp4
+*.txt
+*.jpg
+*.json
