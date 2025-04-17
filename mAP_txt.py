@@ -90,7 +90,7 @@ def save_eval_json(coco_evaluator, tg_file):
                 valid_precisions = class_precisions[class_precisions > -1]
                 if valid_precisions.size > 0:
                     ap50 = np.mean(valid_precisions)
-                    class_ap50[str(cat_id)] = round(float(ap50), 4)
+                    class_ap50[str(cat_id)] = float(ap50)
                 else:
                     class_ap50[str(cat_id)] = None
         
