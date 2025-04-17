@@ -52,9 +52,15 @@ def popo(gt_file, txt_file):
         res[image_id]["scores"] = torch.tensor(res[image_id]["scores"])
     return res
 
+import json
+import numpy as np
+
 def save_eval_json(coco_evaluator, tg_file):
     full_metrics = {}
+    
     for iou_type, coco_eval in coco_evaluator.coco_eval.items():
+        class_ap50 = {}
+        
         if hasattr(coco_eval, "stats"):
             full_metrics[iou_type] = {
                 "AP (IoU=0.50:0.95 | area=all | maxDets=100)": coco_eval.stats[0],
@@ -70,6 +76,29 @@ def save_eval_json(coco_evaluator, tg_file):
                 "AR (IoU=0.50:0.95 | area=medium | maxDets=100)": coco_eval.stats[10],
                 "AR (IoU=0.50:0.95 | area=large | maxDets=100)": coco_eval.stats[11],
             }
+
+        # Compute AP@50 for each class
+        if coco_eval.eval is not None and "precision" in coco_eval.eval:
+            precisions = coco_eval.eval["precision"]  # shape: [IoU, Recall, Class, Area, MaxDets]
+            iou_thresh_idx = 0  # Index for IoU=0.50
+            area_idx = 0        # Index for area='all'
+            max_det_idx = 2     # Index for maxDets=100
+            
+            for idx, cat_id in enumerate(coco_eval.params.catIds):
+                # Get precision values for this class at IoU=0.50
+                class_precisions = precisions[iou_thresh_idx, :, idx, area_idx, max_det_idx]
+                valid_precisions = class_precisions[class_precisions > -1]
+                if valid_precisions.size > 0:
+                    ap50 = np.mean(valid_precisions)
+                    class_ap50[str(cat_id)] = round(float(ap50), 4)
+                else:
+                    class_ap50[str(cat_id)] = None
+        
+        if class_ap50:
+            print("Per-class AP@50:")
+            for cat_id, ap in class_ap50.items():
+                print(f"  Class {cat_id}: AP@50 = {ap}")
+            full_metrics[iou_type]["Per-class AP@50"] = class_ap50
 
     with open(tg_file, "w") as f:
         json.dump(full_metrics, f, indent=2)
@@ -99,10 +128,9 @@ if __name__ == '__main__':
     # Usage Example:
     # Path to your ground truth and prediction .txt files
     gt_file = 'data/aicity2024_track5_train/val.json'
-    #pred_file = 'bb_txt/all_1_100.txt'
+    pred_file = 'all_1_102.txt'
     #pred_file = 'bb_txt/bb_012.txt'
-    pred_file='final_results_conf_0.3_adaptive.txt'
-    #out_file = 'results/mAP_016.json'
+    #pred_file='final_results_conf_0.3_adaptive.txt'
 
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()

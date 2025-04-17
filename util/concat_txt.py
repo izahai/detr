@@ -3,8 +3,9 @@ import argparse
 
 def concat_txt_files(input_folder, output_file):
     """
-    Concatenate all .txt files in a folder into a single .txt file.
-
+    Concatenate all .txt files in a folder into a single .txt file,
+    excluding empty lines.
+    
     Args:
     - input_folder (str): Path to the folder containing .txt files.
     - output_file (str): Path to the output .txt file.
@@ -14,11 +15,14 @@ def concat_txt_files(input_folder, output_file):
             if filename.endswith('.txt'):
                 file_path = os.path.join(input_folder, filename)
                 with open(file_path, 'r') as infile:
-                    outfile.write(infile.read())
-    print(f"All .txt files in '{input_folder}' have been concatenated into '{output_file}'.")
+                    for line in infile:
+                        line = line.strip()
+                        if line:  # Skip empty lines
+                            outfile.write(line + '\n')
+    print(f"All non-empty lines from .txt files in '{input_folder}' have been concatenated into '{output_file}'.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Concatenate all .txt files in a folder into a single .txt file.")
+    parser = argparse.ArgumentParser(description="Concatenate all .txt files in a folder into a single .txt file, excluding empty lines.")
     parser.add_argument('--input_folder', type=str, required=True, help="Path to the folder containing .txt files.")
     parser.add_argument('--output_file', type=str, required=True, help="Path to the output .txt file.")
     args = parser.parse_args()

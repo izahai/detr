@@ -51,7 +51,7 @@ python util/visualize.py \
 
 
 # concat txt
-python util/concat_txt.py --input_folder UIT_res --output_file all_1_100.txt
+python util/concat_txt.py --input_folder UIT_res --output_file all_1_102.txt
 python util/uit_txt_to_json.py --input_file all_1_100.txt --output_file uit.json
 
 python uit_eval.py --coco_path data/aicity2024_track5_train --dataset_file custom
@@ -60,6 +60,3 @@ python print_eval.py --eval_file results/eval.pth
 
 python mAP_txt.py --coco_path data/aicity2024_track5_train --dataset_file custom
 
-7: 201, 212, 223, 248
-
-005
